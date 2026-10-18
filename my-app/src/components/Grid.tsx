@@ -23,7 +23,6 @@ function Grid() {
 
     const meshRef = useRef<InstancedMesh>(null)
     const scaleCurrentRef = useRef<Float32Array>(new Float32Array(0))
-    const scaleTargetRef = useRef<Float32Array>(new Float32Array(0))
     const activeRef = useRef<Set<number>>(new Set())
     const count = width * height * depth
 
@@ -32,7 +31,6 @@ function Grid() {
     useEffect(() => {
         const mesh = meshRef.current
         scaleCurrentRef.current = new Float32Array(count)
-        scaleTargetRef.current = new Float32Array(count)
         activeRef.current = new Set()
         if (!mesh) return
         tempObject.scale.setScalar(0)
@@ -95,55 +93,70 @@ function Grid() {
         return arr
     }, [count])
 
-    // on every tick, just update each cell's spring target (0 or 1) instead
-    // of snapping its matrix instantly. Newly-alive cells join the active set
-    // so the per-frame loop starts easing them in; cells that just died stay
-    // in the active set (added when they were born) until they finish easing out.
+    // on every tick, newly-alive cells join the active set so the per-frame
+    // loop starts easing them in and spinning them; cells that just died are
+    // dropped from it instead and get one final look baked in - darker and
+    // a touch smaller - so they read as dead, then stay frozen exactly like
+    // that (no more motion) rather than animating them back out of existence.
+    const DEATH_SHRINK = 0.1
+    const DEATH_LIGHTNESS = 0
     useEffect(() => {
-        const target = scaleTargetRef.current
+        const mesh = meshRef.current
         const active = activeRef.current
+        const scaleCurrent = scaleCurrentRef.current
         for (let i = 0; i < count; i++) {
-            const isAlive = cells[i] === 1
-            target[i] = isAlive ? 1 : 0
-            if (isAlive) active.add(i)
-        }
-    }, [cells, count])
+            if (cells[i] === 1) {
+                active.add(i)
+                continue
+            }
+            if (!active.delete(i) || !mesh) continue
 
-    // smoothly ease every active cube's scale toward its target (no bounce),
-    // spin it in place, layer a per-instance sine pulse on top so alive cubes
-    // grow and shrink on their own random cycle, and shade it by how crowded
-    // it currently is (more live neighbors -> lighter shade of the base hue);
-    // only iterates cells that are alive or still easing out, so cost tracks
-    // population density, not total grid size.
+            scaleCurrent[i] *= DEATH_SHRINK
+            mesh.getMatrixAt(i, tempObject.matrix)
+            tempObject.matrix.decompose(tempObject.position, tempObject.quaternion, tempObject.scale)
+            tempObject.scale.multiplyScalar(DEATH_SHRINK)
+            tempObject.updateMatrix()
+            mesh.setMatrixAt(i, tempObject.matrix)
+            mesh.instanceMatrix.addUpdateRange(i * 16, 16)
+            mesh.instanceMatrix.needsUpdate = true
+
+            tempColor.setHSL(baseHue, 0.3, DEATH_LIGHTNESS)
+            mesh.setColorAt(i, tempColor)
+            mesh.instanceColor?.addUpdateRange(i * 3, 3)
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+        }
+    }, [cells, count, baseHue])
+
+    // smoothly ease every active (alive) cube's scale up to full size, spin
+    // it at a speed driven by its live neighbor count, layer a per-instance
+    // sine pulse on top so cubes breathe on their own cycle, and shade it by
+    // how crowded it currently is (more live neighbors -> lighter shade of
+    // the base hue); only iterates alive cells, so cost tracks population
+    // density, not total grid size. Dead cells are dropped from `active`
+    // elsewhere, so they're simply left untouched - frozen in place forever.
     const SCALE_EASE_LAMBDA = 12
     const PULSE_AMPLITUDE = 1
     const MAX_NEIGHBORS = 26
+    const SPIN_MIN = 0.3
+    const SPIN_MAX = 4
     useFrame((state, delta) => {
         const mesh = meshRef.current
         const active = activeRef.current
         if (!mesh || active.size === 0) return
 
         const scaleCurrent = scaleCurrentRef.current
-        const target = scaleTargetRef.current
         const t = state.clock.elapsedTime
 
         for (const i of active) {
-            const targetScale = target[i]
-            let current = MathUtils.damp(scaleCurrent[i], targetScale, SCALE_EASE_LAMBDA, delta)
-
-            const settled = Math.abs(targetScale - current) < 0.001
-            if (settled) {
-                current = targetScale
-                if (targetScale === 0) active.delete(i)
-            }
-
+            const current = MathUtils.damp(scaleCurrent[i], 1, SCALE_EASE_LAMBDA, delta)
             scaleCurrent[i] = current
 
+            const spin = MathUtils.mapLinear(neighborCounts[i], 0, MAX_NEIGHBORS, SPIN_MIN, SPIN_MAX)
             tempObject.position.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2])
             tempObject.rotation.set(
-                t * rotationSpeeds[i * 3],
-                t * rotationSpeeds[i * 3 + 1],
-                t * rotationSpeeds[i * 3 + 2]
+                t * rotationSpeeds[i * 3] * spin,
+                t * rotationSpeeds[i * 3 + 1] * spin,
+                t * rotationSpeeds[i * 3 + 2] * spin
             )
             const pulse = 1 + Math.sin(t * pulseParams[i * 2] + pulseParams[i * 2 + 1]) * PULSE_AMPLITUDE
             tempObject.scale.setScalar(current * pulse)
@@ -167,7 +180,8 @@ function Grid() {
         <group position={[-(width - 1) / 2, -(height - 1) / 2, -(depth - 1) / 2]}>
             <instancedMesh ref={meshRef} args={args} frustumCulled={false}>
                 {/* larger than the 1-unit grid spacing so neighboring alive cells overlap into blobs */}
-                <torusKnotGeometry args={[1, 1, 16, 2]} />
+                {/* <torusKnotGeometry args={[1, 1, 16, 2]} /> */}
+                <boxGeometry args={[1, 1, 5]} />
                 {/* <planeGeometry args={[1, 1]} /> */}
                 {/* <capsuleGeometry args={[1, 1, 4, 8, 1]} /> */}
                 <meshStandardMaterial />

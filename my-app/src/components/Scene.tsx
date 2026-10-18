@@ -1,10 +1,13 @@
 import { Environment, OrbitControls } from '@react-three/drei'
+import { Bloom, EffectComposer } from '@react-three/postprocessing'
 import Grid from './Grid'
 import GameLoop from './GameLoop'
 
 function Scene() {
   return (
     <>
+      {/* dark backdrop so the bloom on alive cells reads like glowing crystals in a geode */}
+      <color attach="background" args={['#050507']} />
       <OrbitControls></OrbitControls>
       <ambientLight intensity={0.5} />
       {/* key light */}
@@ -18,6 +21,10 @@ function Scene() {
 
       <GameLoop />
       <Grid></Grid>
+
+      <EffectComposer>
+        <Bloom mipmapBlur intensity={1.5} luminanceThreshold={0.3} luminanceSmoothing={0.3} />
+      </EffectComposer>
     </>
   )
 }
