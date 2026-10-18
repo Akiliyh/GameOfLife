@@ -1,7 +1,5 @@
-export function randomCells(count: number, chance: number) {
-    const cells = new Uint8Array(count)
-    for (let i = 0; i < count; i++) {
-        cells[i] = Math.random() < chance ? 1 : 0
-    }
-    return cells
+import { createGrid } from './grid'
+
+export function randomCells(width: number, height: number, depth: number, chance: number) {
+    return createGrid(width, height, depth, () => Math.random() < chance)
 }

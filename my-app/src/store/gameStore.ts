@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { randomCells } from '../simulation/cells'
+import { createGrid, type Cells, type NeighborCounts } from '../simulation/grid'
 import { computeNeighborCounts } from '../simulation/neighbors'
 import { applyRules } from '../simulation/rules'
 
@@ -7,10 +8,10 @@ type GameState = {
     width: number
     height: number
     depth: number
-    cells: Uint8Array
-    nextCells: Uint8Array
-    neighborCounts: Uint8Array
-    nextNeighborCounts: Uint8Array
+    cells: Cells
+    nextCells: Cells
+    neighborCounts: NeighborCounts
+    nextNeighborCounts: NeighborCounts
     generation: number
     running: boolean
     animated: boolean
@@ -29,13 +30,19 @@ const INITIAL_SIZE = 50
 const INITIAL_CHANCE = 0.45
 
 function createRandomGrid(width: number, height: number, depth: number, chance: number) {
-    const cells = randomCells(width * height * depth, chance)
-    const neighborCounts = computeNeighborCounts(cells, width, height, depth)
+    const cells = randomCells(width, height, depth, chance)
+    const neighborCounts = computeNeighborCounts(cells) // grid of neighbour counts
     return { cells, neighborCounts }
 }
 
+function createEmptyBuffers(width: number, height: number, depth: number) {
+    return {
+        nextCells: createGrid(width, height, depth, () => false),
+        nextNeighborCounts: createGrid(width, height, depth, () => 0),
+    }
+}
+
 export const useGameStore = create<GameState>((set, get) => {
-    const initialCount = INITIAL_SIZE * INITIAL_SIZE * INITIAL_SIZE
     const initialGrid = createRandomGrid(INITIAL_SIZE, INITIAL_SIZE, INITIAL_SIZE, INITIAL_CHANCE)
 
     return {
@@ -44,8 +51,7 @@ export const useGameStore = create<GameState>((set, get) => {
         depth: INITIAL_SIZE,
         cells: initialGrid.cells,
         neighborCounts: initialGrid.neighborCounts,
-        nextCells: new Uint8Array(initialCount),
-        nextNeighborCounts: new Uint8Array(initialCount),
+        ...createEmptyBuffers(INITIAL_SIZE, INITIAL_SIZE, INITIAL_SIZE), // fills the rest with dead cells
         generation: 0,
         running: false,
         animated: true,
@@ -64,15 +70,13 @@ export const useGameStore = create<GameState>((set, get) => {
 
         setDimensions: (width, height, depth) => {
             const { chance, generation } = get()
-            const count = width * height * depth
             const grid = createRandomGrid(width, height, depth, chance)
             set({
                 width,
                 height,
                 depth,
                 ...grid,
-                nextCells: new Uint8Array(count),
-                nextNeighborCounts: new Uint8Array(count),
+                ...createEmptyBuffers(width, height, depth),
                 generation: generation + 1,
             })
         },
@@ -84,12 +88,12 @@ export const useGameStore = create<GameState>((set, get) => {
         },
 
         step: () => {
-            const { width, height, depth, cells, neighborCounts, nextCells, nextNeighborCounts } = get()
+            const { cells, neighborCounts, nextCells, nextNeighborCounts } = get()
 
             applyRules(cells, neighborCounts, nextCells)
-            computeNeighborCounts(nextCells, width, height, depth, nextNeighborCounts)
+            computeNeighborCounts(nextCells, nextNeighborCounts)
 
-            // swap: the new arrays become current, the old ones get reused next step
+            // swap: the new grids become current, the old ones get reused next step
             set({
                 cells: nextCells,
                 neighborCounts: nextNeighborCounts,
