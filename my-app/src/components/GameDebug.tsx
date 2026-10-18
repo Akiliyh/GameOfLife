@@ -5,7 +5,8 @@ import { useGameStore } from '../store/gameStore'
 function GameDebug() {
     const setDimensions = useGameStore((s) => s.setDimensions)
     const setRunning = useGameStore((s) => s.setRunning)
-    const setTickIntervalMs = useGameStore((s) => s.setTickIntervalMs)
+    const setAnimated = useGameStore((s) => s.setAnimated)
+    const setTickIntervalMs =useGameStore((s) => s.setTickIntervalMs)
     const setChance = useGameStore((s) => s.setChance)
     const step = useGameStore((s) => s.step)
     const randomize = useGameStore((s) => s.randomize)
@@ -17,8 +18,9 @@ function GameDebug() {
         depth: { value: initial.depth, min: 1, max: 100, step: 1 },
     })
 
-    const { running, tickIntervalMs, chance } = useControls('Simulation', {
+    const { running, animated, tickIntervalMs, chance } = useControls('Simulation', {
         running: { value: initial.running },
+        animated: { value: initial.animated, label: 'rotate & pulse' },
         tickIntervalMs: { value: initial.tickIntervalMs, min: 20, max: 1000, step: 10, label: 'speed (ms/tick)' },
         chance: { value: initial.chance, min: 0, max: 1, step: 0.01, label: 'alive chance' },
         'Step Once': button(() => step()),
@@ -32,6 +34,10 @@ function GameDebug() {
     useEffect(() => {
         setRunning(running)
     }, [running, setRunning])
+
+    useEffect(() => {
+        setAnimated(animated)
+    }, [animated, setAnimated])
 
     useEffect(() => {
         setTickIntervalMs(tickIntervalMs)

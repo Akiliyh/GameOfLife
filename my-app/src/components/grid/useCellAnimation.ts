@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Color, MathUtils, Object3D, type InstancedMesh } from 'three'
 import { MAX_NEIGHBORS } from '../../simulation/neighbors'
+import { useGameStore } from '../../store/gameStore'
 import {
     DEATH_LIGHTNESS,
     DEATH_SHRINK,
@@ -38,6 +39,8 @@ export function useCellAnimation({ aliveRef, deadRef, count, cells, neighborCoun
     const { positions, rotationSpeeds, pulseParams, baseHue, hueJitterOffsets } = attributes
     const scaleCurrentRef = useRef<Float32Array>(new Float32Array(0))
     const activeRef = useRef<Set<number>>(new Set())
+    // our own clock, so rotation and pulsing can freeze and resume without jumping
+    const animationTimeRef = useRef(0)
 
     // animation state is keyed by instance index, so it must be rebuilt (not
     // just resized) whenever the grid dimensions change.
@@ -97,13 +100,14 @@ export function useCellAnimation({ aliveRef, deadRef, count, cells, neighborCoun
     // by its neighbor count, layer a per-instance sine pulse on top, and shade
     // it by how crowded it is (more neighbors -> lighter shade of the base hue).
     // Only iterates alive cells, so cost tracks population, not grid size.
-    useFrame((state, delta) => {
+    useFrame((_, delta) => {
         const mesh = aliveRef.current
         const active = activeRef.current
         if (!mesh || active.size === 0) return
 
         const scaleCurrent = scaleCurrentRef.current
-        const t = state.clock.elapsedTime
+        if (useGameStore.getState().animated) animationTimeRef.current += delta
+        const t = animationTimeRef.current
 
         for (const i of active) {
             const current = MathUtils.damp(scaleCurrent[i], 1, SCALE_EASE_LAMBDA, delta)

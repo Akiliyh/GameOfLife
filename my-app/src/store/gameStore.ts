@@ -13,12 +13,14 @@ type GameState = {
     nextNeighborCounts: Uint8Array
     generation: number
     running: boolean
+    animated: boolean
     tickIntervalMs: number
     chance: number
     setDimensions: (width: number, height: number, depth: number) => void
     randomize: (chance?: number) => void
     step: () => void
     setRunning: (running: boolean) => void
+    setAnimated: (animated: boolean) => void
     setTickIntervalMs: (tickIntervalMs: number) => void
     setChance: (chance: number) => void
 }
@@ -46,10 +48,12 @@ export const useGameStore = create<GameState>((set, get) => {
         nextNeighborCounts: new Uint8Array(initialCount),
         generation: 0,
         running: false,
+        animated: true,
         tickIntervalMs: 200,
         chance: INITIAL_CHANCE,
 
         setRunning: (running) => set({ running }),
+        setAnimated: (animated) => set({ animated }),
         setTickIntervalMs: (tickIntervalMs) => set({ tickIntervalMs }),
 
         setChance: (chance) => {
