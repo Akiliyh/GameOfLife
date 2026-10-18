@@ -21,7 +21,11 @@ function Grid() {
         }))
     )
 
+    // alive cells render with an unlit basic material, dead cells with a lit one, and a
+    // material is per-mesh, so each cell has an instance slot in both meshes and only
+    // one of the two is ever non-zero-scale.
     const meshRef = useRef<InstancedMesh>(null)
+    const deadMeshRef = useRef<InstancedMesh>(null)
     const scaleCurrentRef = useRef<Float32Array>(new Float32Array(0))
     const activeRef = useRef<Set<number>>(new Set())
     const count = width * height * depth
@@ -30,15 +34,18 @@ function Grid() {
     // just resized) whenever the grid dimensions change.
     useEffect(() => {
         const mesh = meshRef.current
+        const deadMesh = deadMeshRef.current
         scaleCurrentRef.current = new Float32Array(count)
         activeRef.current = new Set()
-        if (!mesh) return
+        if (!mesh || !deadMesh) return
         tempObject.scale.setScalar(0)
         tempObject.updateMatrix()
         for (let i = 0; i < count; i++) {
             mesh.setMatrixAt(i, tempObject.matrix)
+            deadMesh.setMatrixAt(i, tempObject.matrix)
         }
         mesh.instanceMatrix.needsUpdate = true
+        deadMesh.instanceMatrix.needsUpdate = true
     }, [count])
 
     // args tuple must stay referentially stable across renders so R3F doesn't
@@ -98,32 +105,49 @@ function Grid() {
     // dropped from it instead and get one final look baked in - darker and
     // a touch smaller - so they read as dead, then stay frozen exactly like
     // that (no more motion) rather than animating them back out of existence.
-    const DEATH_SHRINK = 0.1
+    const DEATH_SHRINK = 0.4
     const DEATH_LIGHTNESS = 0
     useEffect(() => {
         const mesh = meshRef.current
+        const deadMesh = deadMeshRef.current
         const active = activeRef.current
         const scaleCurrent = scaleCurrentRef.current
+        if (!mesh || !deadMesh) return
         for (let i = 0; i < count; i++) {
             if (cells[i] === 1) {
-                active.add(i)
+                if (!active.has(i)) {
+                    active.add(i)
+                    // coming back to life: hide its dead copy
+                    tempObject.scale.setScalar(0)
+                    tempObject.updateMatrix()
+                    deadMesh.setMatrixAt(i, tempObject.matrix)
+                    deadMesh.instanceMatrix.addUpdateRange(i * 16, 16)
+                    deadMesh.instanceMatrix.needsUpdate = true
+                }
                 continue
             }
-            if (!active.delete(i) || !mesh) continue
+            if (!active.delete(i)) continue
 
             scaleCurrent[i] *= DEATH_SHRINK
+            // move the cube's last pose from the alive mesh to the dead mesh, shrunk
             mesh.getMatrixAt(i, tempObject.matrix)
             tempObject.matrix.decompose(tempObject.position, tempObject.quaternion, tempObject.scale)
             tempObject.scale.multiplyScalar(DEATH_SHRINK)
+            tempObject.updateMatrix()
+            deadMesh.setMatrixAt(i, tempObject.matrix)
+            deadMesh.instanceMatrix.addUpdateRange(i * 16, 16)
+            deadMesh.instanceMatrix.needsUpdate = true
+
+            tempObject.scale.setScalar(0)
             tempObject.updateMatrix()
             mesh.setMatrixAt(i, tempObject.matrix)
             mesh.instanceMatrix.addUpdateRange(i * 16, 16)
             mesh.instanceMatrix.needsUpdate = true
 
             tempColor.setHSL(baseHue, 0.3, DEATH_LIGHTNESS)
-            mesh.setColorAt(i, tempColor)
-            mesh.instanceColor?.addUpdateRange(i * 3, 3)
-            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+            deadMesh.setColorAt(i, tempColor)
+            deadMesh.instanceColor?.addUpdateRange(i * 3, 3)
+            if (deadMesh.instanceColor) deadMesh.instanceColor.needsUpdate = true
         }
     }, [cells, count, baseHue])
 
@@ -184,6 +208,13 @@ function Grid() {
                 <boxGeometry args={[1, 1, 5]} />
                 {/* <planeGeometry args={[1, 1]} /> */}
                 {/* <capsuleGeometry args={[1, 1, 4, 8, 1]} /> */}
+                {/* alive: unlit, so the colour goes straight to the Bloom */}
+                <meshBasicMaterial />
+            </instancedMesh>
+            {/* dead: lit, so they stay readable instead of vanishing as unlit black */}
+            <instancedMesh ref={deadMeshRef} args={args} frustumCulled={false}>
+                <boxGeometry args={[1, 1, 5]} />
+                {/* <meshToonMaterial /> */}
                 <meshStandardMaterial />
             </instancedMesh>
         </group>

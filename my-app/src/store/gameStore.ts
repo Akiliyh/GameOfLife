@@ -161,21 +161,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     step: () => {
-        const { width, height, depth, cells, nextCells, nextNeighborCounts } = get()
+        const { width, height, depth, cells, neighborCounts, nextCells, nextNeighborCounts } = get()
 
+        // neighborCounts always describes `cells`, so the rule can read it directly
+        for (let i = 0; i < cells.length; i++) {
+            const neighbors = neighborCounts[i]
+            nextCells[i] = cells[i] === 1 ? 1 - DEATH_LOOKUP[neighbors] : BIRTH_LOOKUP[neighbors]
+        }
+
+        // recount against the new generation so counts stay in step with nextCells
         for (let x = 0; x < width; x++) {
             for (let y = 0; y < height; y++) {
                 for (let z = 0; z < depth; z++) {
-                    const i = x + y * width + z * width * height
-                    const alive = cells[i] === 1
-                    const neighbors = countAliveNeighbors(cells, x, y, z, width, height, depth)
-                    nextNeighborCounts[i] = neighbors
-
-                    if (alive) {
-                        nextCells[i] = DEATH_LOOKUP[neighbors] ? 0 : 1
-                    } else {
-                        nextCells[i] = BIRTH_LOOKUP[neighbors]
-                    }
+                    nextNeighborCounts[x + y * width + z * width * height] = countAliveNeighbors(
+                        nextCells, x, y, z, width, height, depth
+                    )
                 }
             }
         }

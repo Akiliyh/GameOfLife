@@ -9,7 +9,7 @@ function Scene() {
       {/* dark backdrop so the bloom on alive cells reads like glowing crystals in a geode */}
       <color attach="background" args={['#050507']} />
       <OrbitControls></OrbitControls>
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.1} />
       {/* key light */}
       <directionalLight position={[3, 3, 3]} color={0xc9e4ff} intensity={Math.PI} />
       {/* fill light */}
@@ -23,7 +23,7 @@ function Scene() {
       <Grid></Grid>
 
       <EffectComposer>
-        <Bloom mipmapBlur intensity={1.5} luminanceThreshold={0.3} luminanceSmoothing={0.3} />
+        <Bloom mipmapBlur intensity={5} luminanceThreshold={0.3} luminanceSmoothing={0.3} />
       </EffectComposer>
     </>
   )
