@@ -11,11 +11,11 @@ function Scene() {
       <OrbitControls></OrbitControls>
       <ambientLight intensity={0.1} />
       {/* key light */}
-      <directionalLight position={[3, 3, 3]} color={0xc9e4ff} intensity={Math.PI} />
+      {/* <directionalLight position={[3, 3, 3]} color={0xc9e4ff} intensity={Math.PI} /> */}
       {/* fill light */}
-      <directionalLight position={[-3, 3, 3]} color={0xc9e4ff} intensity={Math.PI / 2} />
+      {/* <directionalLight position={[-3, 3, 3]} color={0xc9e4ff} intensity={Math.PI / 2} /> */}
       {/* back light */}
-      <directionalLight position={[-3, 1, -3]} color={0xc9e4ff} intensity={Math.PI / 3} />
+      {/* <directionalLight position={[-3, 1, -3]} color={0xc9e4ff} intensity={Math.PI / 3} /> */}
       {/* gives the reflective cell material something to reflect */}
       <Environment preset="city" />
 
