@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Color, InstancedMesh, MathUtils, Object3D, type BufferGeometry, type Material } from 'three';
+import seedrandom from 'seedrandom';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../store/gameStore';
 
 const tempObject = new Object3D()
 const tempColor = new Color()
+const rng = seedrandom('grid')
 
 function Grid() {
-    const { depth, height, width, cells } = useGameStore(
-        useShallow((s) => ({ depth: s.depth, height: s.height, width: s.width, cells: s.cells }))
+    const { depth, height, width, cells, neighborCounts, generation } = useGameStore(
+        useShallow((s) => ({
+            depth: s.depth,
+            height: s.height,
+            width: s.width,
+            cells: s.cells,
+            neighborCounts: s.neighborCounts,
+            generation: s.generation,
+        }))
     )
 
     const meshRef = useRef<InstancedMesh>(null)
@@ -41,18 +50,16 @@ function Grid() {
         [count]
     )
 
-    // per-cell jitter offsets only depend on the grid dimensions, not on which
-    // cells are alive, so they're computed once and reused every tick.
+    // per-cell jitter offsets, computed once per dimension change.
     const positions = useMemo(() => {
         const arr = new Float32Array(count * 3)
         let i = 0
         for (let x = 0; x < width; x++) {
             for (let y = 0; y < height; y++) {
                 for (let z = 0; z < depth; z++) {
-                    const seed = x + y * width + z * width * height
-                    arr[i * 3] = x + MathUtils.seededRandom(seed) * 0.3
-                    arr[i * 3 + 1] = y + MathUtils.seededRandom(seed + 1000000) * 0.3
-                    arr[i * 3 + 2] = z + MathUtils.seededRandom(seed + 2000000) * 0.3
+                    arr[i * 3] = x + rng() * 0.3
+                    arr[i * 3 + 1] = y + rng() * 0.3
+                    arr[i * 3 + 2] = z + rng() * 0.3
                     i++
                 }
             }
@@ -63,37 +70,30 @@ function Grid() {
     // per-instance rotation speed/axis so cubes don't all spin in lockstep.
     const rotationSpeeds = useMemo(() => {
         const arr = new Float32Array(count * 3)
+        for (let i = 0; i < arr.length; i++) arr[i] = (rng() - 0.5) * 2
+        return arr
+    }, [count])
+
+    // per-instance pulse frequency/phase so cubes breathe on their own cycle.
+    const pulseParams = useMemo(() => {
+        const arr = new Float32Array(count * 2)
         for (let i = 0; i < count; i++) {
-            const seed = i + 3000000
-            arr[i * 3] = (MathUtils.seededRandom(seed) - 0.5) * 2
-            arr[i * 3 + 1] = (MathUtils.seededRandom(seed + 1000000) - 0.5) * 2
-            arr[i * 3 + 2] = (MathUtils.seededRandom(seed + 2000000) - 0.5) * 2
+            arr[i * 2] = rng() * 5 + 1
+            arr[i * 2 + 1] = rng() * Math.PI * 2
         }
         return arr
     }, [count])
 
-    // colors are position-based (RGB from normalized x/y/z) with a little
-    // random jitter mixed in so cells at the same coordinate still differ;
-    // set once per dimension change since it doesn't depend on being alive.
-    useEffect(() => {
-        const mesh = meshRef.current
-        if (!mesh) return
-        const jitter = 0.25
-        let i = 0
-        for (let x = 0; x < width; x++) {
-            for (let y = 0; y < height; y++) {
-                for (let z = 0; z < depth; z++) {
-                    const r = MathUtils.clamp(x / width + (Math.random() - 0.5) * jitter, 0, 1)
-                    const g = MathUtils.clamp(y / height + (Math.random() - 0.5) * jitter, 0, 1)
-                    const b = MathUtils.clamp(z / depth + (Math.random() - 0.5) * jitter, 0, 1)
-                    tempColor.setRGB(r, g, b)
-                    mesh.setColorAt(i, tempColor)
-                    i++
-                }
-            }
-        }
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-    }, [width, height, depth, count])
+    // one base hue per generation, plus a small per-cell jitter so cells
+    // read as a spread of shades instead of a flat color or a rainbow clash.
+    const HUE_JITTER = 0.3
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute is keyed off generation, value just draws the next shared random
+    const baseHue = useMemo(() => rng(), [generation])
+    const hueJitterOffsets = useMemo(() => {
+        const arr = new Float32Array(count)
+        for (let i = 0; i < count; i++) arr[i] = (rng() - 0.5) * HUE_JITTER
+        return arr
+    }, [count])
 
     // on every tick, just update each cell's spring target (0 or 1) instead
     // of snapping its matrix instantly. Newly-alive cells join the active set
@@ -109,10 +109,15 @@ function Grid() {
         }
     }, [cells, count])
 
-    // smoothly ease every active cube's scale toward its target (no bounce)
-    // and spin it in place; only iterates cells that are alive or still
-    // easing out, so cost tracks population density, not total grid size.
+    // smoothly ease every active cube's scale toward its target (no bounce),
+    // spin it in place, layer a per-instance sine pulse on top so alive cubes
+    // grow and shrink on their own random cycle, and shade it by how crowded
+    // it currently is (more live neighbors -> lighter shade of the base hue);
+    // only iterates cells that are alive or still easing out, so cost tracks
+    // population density, not total grid size.
     const SCALE_EASE_LAMBDA = 12
+    const PULSE_AMPLITUDE = 1
+    const MAX_NEIGHBORS = 26
     useFrame((state, delta) => {
         const mesh = meshRef.current
         const active = activeRef.current
@@ -140,18 +145,31 @@ function Grid() {
                 t * rotationSpeeds[i * 3 + 1],
                 t * rotationSpeeds[i * 3 + 2]
             )
-            tempObject.scale.setScalar(current)
+            const pulse = 1 + Math.sin(t * pulseParams[i * 2] + pulseParams[i * 2 + 1]) * PULSE_AMPLITUDE
+            tempObject.scale.setScalar(current * pulse)
             tempObject.updateMatrix()
             mesh.setMatrixAt(i, tempObject.matrix)
+            // mark just this instance's 4x4 block dirty so the GPU upload below
+            // only sends the changed instances instead of the whole buffer.
+            mesh.instanceMatrix.addUpdateRange(i * 16, 16)
+
+            const hue = (baseHue + hueJitterOffsets[i] + 1) % 1
+            const lightness = MathUtils.mapLinear(neighborCounts[i], 0, MAX_NEIGHBORS, 0, 1)
+            tempColor.setHSL(hue, 0.7, lightness)
+            mesh.setColorAt(i, tempColor)
+            mesh.instanceColor?.addUpdateRange(i * 3, 3)
         }
         mesh.instanceMatrix.needsUpdate = true
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     })
 
     return (
         <group position={[-(width - 1) / 2, -(height - 1) / 2, -(depth - 1) / 2]}>
             <instancedMesh ref={meshRef} args={args} frustumCulled={false}>
                 {/* larger than the 1-unit grid spacing so neighboring alive cells overlap into blobs */}
-                <boxGeometry args={[1.3, 1.3, 1.3]} />
+                <torusKnotGeometry args={[1, 1, 16, 2]} />
+                {/* <planeGeometry args={[1, 1]} /> */}
+                {/* <capsuleGeometry args={[1, 1, 4, 8, 1]} /> */}
                 <meshStandardMaterial />
             </instancedMesh>
         </group>
