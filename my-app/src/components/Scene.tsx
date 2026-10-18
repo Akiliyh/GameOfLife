@@ -1,6 +1,6 @@
 import { Environment, OrbitControls } from '@react-three/drei'
 import { Bloom, EffectComposer } from '@react-three/postprocessing'
-import Grid from './Grid'
+import Grid from './grid/Grid'
 import GameLoop from './GameLoop'
 
 function Scene() {
@@ -20,7 +20,7 @@ function Scene() {
       <Environment preset="city" />
 
       <GameLoop />
-      <Grid></Grid>
+      <Grid />
 
       <EffectComposer>
         <Bloom mipmapBlur intensity={5} luminanceThreshold={0.3} luminanceSmoothing={0.3} />
